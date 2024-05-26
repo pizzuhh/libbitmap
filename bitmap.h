@@ -65,7 +65,7 @@ typedef struct  {
 * @param bitmap_file Valid file pointer to a file which is opened in write binary mode
 * @param bitmap_data PBITMAP structure with valid BITMAPFILEHEADER, BITMAPINFOHEADER and pixel data
 */
-void WriteToBitMapFile(FILE* bitmap_file, PBITMAP bitmap_data) __attribute_nonnull__((1, 2)) {
+void WriteToBitMapFile(FILE* bitmap_file, PBITMAP bitmap_data) {
     fwrite(&bitmap_data->file_header, sizeof(bitmap_data->file_header), 1, bitmap_file);
     fwrite(&bitmap_data->info_header, sizeof(bitmap_data->info_header), 1, bitmap_file);
     fwrite(bitmap_data->pixels, bitmap_data->info_header.image_size, 1, bitmap_file);
