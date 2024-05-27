@@ -50,6 +50,11 @@ typedef struct {
     unsigned    int     n_colors_in_palette;
     unsigned    int     important_colors;
 
+    unsigned    int     red_mask;
+    unsigned    int     green_mask;
+    unsigned    int     blue_mask;
+    unsigned    int     alpha_mask;
+
 } BITMAPINFOHEADER;
 typedef struct  {
     BITMAPFILEHEADER file_header;
@@ -78,8 +83,8 @@ void WriteToBitMapFile(FILE* bitmap_file, PBITMAP bitmap_data) {
 * @param pixels UNPADED pixel data
 * @return PBITMAP structure allocated by malloc() that contains valid BITMAPFILEHEADER, BITMAPINFOHEADER and padded pixel data
 */
-PBITMAP GenerateBitMapData(signed int width, signed int height, unsigned short bits_per_pixel, unsigned char *pixels) {
-    unsigned int size = sizeof(BITMAPFILEHEADER) + sizeof(BITMAPINFOHEADER) + width * height * 3;
+PBITMAP GenerateBitMapData(signed int width, signed int height, unsigned short bits_per_pixel, unsigned char *pixels, unsigned int compression) {
+    unsigned int size = sizeof(BITMAPFILEHEADER) + sizeof(BITMAPINFOHEADER) + width * height * 4;
     BITMAPFILEHEADER file_header = {
         .header_field = {'B', 'M'},
         .size = size,
@@ -93,26 +98,31 @@ PBITMAP GenerateBitMapData(signed int width, signed int height, unsigned short b
         .bitmap_height = height,
         .n_color_planes = 1,
         .bits_per_pixel = bits_per_pixel,
-        .compression_method = 0,
+        .compression_method = compression,
         .image_size =  IMAGE_SIZE(ROW_SIZE(bits_per_pixel, width), height),
         .horizontal_resolution = 2835,
         .vertical_resolution = 2835,
         .n_colors_in_palette = 0,
-        .important_colors = 0
+        .important_colors = 0,
+        .red_mask = (bits_per_pixel == 32)      ?   0x0000FF00 : 0,
+        .green_mask = (bits_per_pixel == 32)    ?   0x00FF0000 : 0,
+        .blue_mask = (bits_per_pixel == 32)     ?   0xFF000000 : 0,
+        .alpha_mask = (bits_per_pixel == 32)    ?   0x000000FF : 0
     };
     PBITMAP bitmap = malloc(sizeof(BITMAP));
     bitmap->file_header = file_header;
     bitmap->info_header = info_header;
 
-    unsigned int row_size = ((info_header.bits_per_pixel * info_header.bitmap_width + 31) / 32) * 4;
+    unsigned int row_size = ROW_SIZE(bitmap->info_header.bits_per_pixel, width);
     bitmap->pixels = malloc(info_header.image_size);
     unsigned char *pixel_ptr = bitmap->pixels;
     unsigned int pixel_idx = 0;
+    unsigned int pixel_size = bits_per_pixel / 8;
     for (int y = 0; y < height; ++y) {
-        memcpy(pixel_ptr, &pixels[pixel_idx], width * 3);
-        pixel_ptr += width * 3;
-        pixel_idx += width * 3;
-        unsigned int padding_size = row_size - width * 3;
+        memcpy(pixel_ptr, &pixels[pixel_idx], width * pixel_size);
+        pixel_ptr += pixel_size;
+        pixel_idx += pixel_size;
+        unsigned int padding_size = row_size - width * pixel_size;
         memset(pixel_ptr, 0, padding_size);
         pixel_ptr += padding_size;
     }
@@ -127,7 +137,7 @@ PBITMAP GenerateBitMapData(signed int width, signed int height, unsigned short b
 * @return A file pointer to the newly created bitmap file. fseek() is ran automatically to the beginning of the file.
 */
 FILE *CreateBitMapFile(const char* file_name, signed int width, signed int height, unsigned char *pixels) {
-    PBITMAP bitmap_data = GenerateBitMapData(width, height, 24, pixels);
+    PBITMAP bitmap_data = GenerateBitMapData(width, height, 32, pixels, 3);
     FILE *bitmap_file = fopen(file_name, "wb+");
     WriteToBitMapFile(bitmap_file, bitmap_data);
     free(bitmap_data);
