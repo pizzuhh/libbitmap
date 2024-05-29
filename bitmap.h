@@ -14,6 +14,7 @@ All information is taken from: https://en.m.wikipedia.org/wiki/BMP_file_format
 #include <string.h>
 #include <time.h>
 #include <assert.h>
+#include <stdint.h>
 
 /*
 * Calculate the row size.
@@ -34,48 +35,59 @@ All information is taken from: https://en.m.wikipedia.org/wiki/BMP_file_format
 typedef struct
 {
     // File header
-    unsigned char   header_field[2];
-    unsigned int    size;
-    unsigned short  reserved1;
-    unsigned short  reserved2;
-    unsigned int    offset;
+    uint8_t     header_field[2];
+    uint32_t    size;
+    uint16_t    reserved1;
+    uint16_t    reserved2;
+    uint32_t    offset;
 } BITMAPFILEHEADER;
 typedef struct {
-    unsigned    int     header_size;
-    signed      int     bitmap_width;
-    signed      int     bitmap_height;
-    unsigned    short   n_color_planes; // must be 1
-    unsigned    short   bits_per_pixel;
-    unsigned    int     compression_method;
-    unsigned    int     image_size;
-    signed      int     horizontal_resolution;
-    signed      int     vertical_resolution;
-    unsigned    int     n_colors_in_palette;
-    unsigned    int     important_colors;
+    uint32_t        header_size;
+    int32_t         bitmap_width;
+    int32_t         bitmap_height;
+    uint16_t        n_color_planes; // must be 1
+    uint16_t        bits_per_pixel;
+    uint32_t        compression_method;
+    uint32_t        image_size;
+    int32_t         horizontal_resolution;
+    int32_t         vertical_resolution;
+    uint32_t        n_colors_in_palette;
+    uint32_t        important_colors;
 
-    unsigned    int     red_mask;
-    unsigned    int     green_mask;
-    unsigned    int     blue_mask;
-    unsigned    int     alpha_mask;
-    unsigned    int     color_space;
-    unsigned    int     color_end_points[9];
-    unsigned    int     red_gamma;
-    unsigned    int     green_gamma;
-    unsigned    int     blue_gamma;
+    uint32_t        red_mask;
+    uint32_t        green_mask;
+    uint32_t        blue_mask;
+    uint32_t        alpha_mask;
+    uint32_t        color_space;
+    uint32_t        color_end_points[9];
+    uint32_t        red_gamma;
+    uint32_t        green_gamma;
+    uint32_t        blue_gamma;
 
 } BITMAPV4HEADER;
 typedef struct  {
-    BITMAPFILEHEADER file_header;
-    BITMAPV4HEADER info_header;
-    unsigned char *pixels;
+    FILE                *file;
+    BITMAPFILEHEADER    file_header;
+    BITMAPV4HEADER      info_header;
+    uint8_t             *pixels;
 
 } BITMAP, *PBITMAP;
-
+typedef struct {
+    uint8_t red;
+    uint8_t green;
+    uint8_t blue;
+    uint8_t alpha;
+} COLOR32BIT;
+typedef struct {
+    uint8_t red;
+    uint8_t green;
+    uint8_t blue;
+} COLOR24BIT;
 #pragma pack(pop)
 
 /*
 * Write to bitmap_file the struct data bitmap_data
-* @param bitmap_file Valid file pointer to a file which is opened in write binary mode
+* @param bitmap_file Valid file stream to a file which is opened in write binary mode
 * @param bitmap_data PBITMAP structure with valid BITMAPFILEHEADER, BITMAPV4HEADER and pixel data
 */
 void WriteToBitMapFile(FILE* bitmap_file, PBITMAP bitmap_data) {
@@ -91,10 +103,10 @@ void WriteToBitMapFile(FILE* bitmap_file, PBITMAP bitmap_data) {
 * @param pixels UNPADED pixel data
 * @return PBITMAP structure allocated by malloc() that contains valid BITMAPFILEHEADER, BITMAPV4HEADER and padded pixel data
 */
-PBITMAP GenerateBitMapData(signed int width, signed int height, unsigned short bits_per_pixel, unsigned char *pixels, unsigned int compression) {
-    unsigned int row_size = ROW_SIZE(bits_per_pixel, width);
-    unsigned int image_size = IMAGE_SIZE(row_size, height);
-    unsigned int size = sizeof(BITMAPFILEHEADER) + sizeof(BITMAPV4HEADER) + image_size;
+PBITMAP GenerateBitMapData(int32_t width, int32_t height, uint16_t bits_per_pixel, uint8_t *pixels, uint32_t compression) {
+    uint32_t row_size = ROW_SIZE(bits_per_pixel, width);
+    uint32_t image_size = IMAGE_SIZE(row_size, height);
+    uint32_t size = sizeof(BITMAPFILEHEADER) + sizeof(BITMAPV4HEADER) + image_size;
     
     BITMAPFILEHEADER file_header = {
         .header_field = {'B', 'M'},
@@ -132,36 +144,52 @@ PBITMAP GenerateBitMapData(signed int width, signed int height, unsigned short b
     bitmap->info_header = info_header;
 
     bitmap->pixels = malloc(image_size);
-    unsigned char *pixel_ptr = bitmap->pixels;
-    unsigned int pixel_idx = 0;
-    unsigned int pixel_size = bits_per_pixel / 8;
+    uint8_t *pixel_ptr = bitmap->pixels;
+    uint32_t pixel_idx = 0;
+    uint32_t pixel_size = bits_per_pixel / 8;
 
     for (int y = 0; y < height; ++y) {
-        memcpy(pixel_ptr, &pixels[pixel_idx], width * pixel_size);
+        memcpy(pixel_ptr, &pixels[pixel_idx], width * pixel_size); // Segfault here?
         pixel_ptr += width * pixel_size;
         pixel_idx += width * pixel_size;
-        unsigned int padding_size = row_size - width * pixel_size;
+        uint32_t padding_size = row_size - width * pixel_size;
         memset(pixel_ptr, 0, padding_size);
         pixel_ptr += padding_size;
     }
 
     return bitmap;
 }
+
+// compression enum
+
+typedef enum  {
+    BI_RGB = 0,
+    BI_RLE8 = 1,
+    BI_RLE4 = 2,
+    BI_BITFIELDS = 3,
+    BI_JPEG = 4,
+    BI_PNG = 5,
+    BI_ALPHABITFIELDS = 6,
+    BI_CMYK = 11,
+    BI_CMYKRLE8 = 12,
+    BI_CMYKRLE4 = 13
+} COMPRESSION;
+
 /*
 * Creates a bitmap image file.
 * @param file_name the path to the output file
 * @param width the width of the bitmap file
 * @param height the height of the bitmap file
 * @param pixels UNPADED pixel data
-* @return A file pointer to the newly created bitmap file. fseek() is ran automatically to the beginning of the file.
+* @return A BITMAP struct that contains the headers, pixel data and a file stream
 */
-FILE *CreateBitMapFile(const char* file_name, signed int width, signed int height, unsigned char *pixels) {
-    PBITMAP bitmap_data = GenerateBitMapData(width, height, 32, pixels, 3);
+BITMAP CreateBitMap(const char* file_name, int32_t width, int32_t height, uint8_t *pixels, uint32_t color_depth, COMPRESSION compression) {
+    PBITMAP bitmap_data = GenerateBitMapData(width, height, color_depth, pixels, compression);
     FILE *bitmap_file = fopen(file_name, "wb+");
     WriteToBitMapFile(bitmap_file, bitmap_data);
-    free(bitmap_data);
     fseek(bitmap_file, 0, SEEK_SET);
-    return bitmap_file;
+    bitmap_data->file = bitmap_file;
+    return *bitmap_data;
 }
 /*
 * Prints bitmap header values
@@ -179,7 +207,7 @@ void PrintBitMapInfo(FILE *f)
     printf("Reserved 2: %d\n", file_header.reserved2);
     printf("Pixel array offset: %d\n", file_header.offset);
     printf("----END FILE HEADER---\n");
-    printf("----START BITMAPINFO HEADER---\n");
+    printf("----START BITMAPV4HEADER HEADER---\n");
     printf("Header size: %d\n", info_header.header_size);
     printf("Width: %d\n", info_header.bitmap_width);
     printf("Height: %d\n", info_header.bitmap_height);
@@ -190,8 +218,15 @@ void PrintBitMapInfo(FILE *f)
     printf("Horizontal Resolution: %d\n", info_header.horizontal_resolution);
     printf("Vertical Resolution: %d\n", info_header.vertical_resolution);
     printf("Palette: %d\n", info_header.n_colors_in_palette);
-    printf("Important Colors: %d\n", info_header.important_colors);
-    printf("----END BITMAPINFO HEADER---\n");
+    printf("Red Mask: %X\n", info_header.red_mask);
+    printf("Green Mask: %X\n", info_header.green_mask);
+    printf("Blue Mask: %X\n", info_header.blue_mask);
+    printf("Alpha Mask: %X\n", info_header.alpha_mask);
+    printf("Color space: %d\n", info_header.color_space);
+    printf("Red Gamma: %d\n", info_header.red_gamma);
+    printf("Green Gamma: %d\n", info_header.green_gamma);
+    printf("Blue Gamma: %d\n", info_header.blue_gamma);
+    printf("----END BITMAPV4HEADER HEADER---\n");
 }
 /*
 * Reads a bitmap file.
@@ -204,12 +239,12 @@ BITMAP ReadBitMap(const char *file_name)
     FILE *bitmap_file = fopen(file_name, "rb");
     fread(&bitmap.file_header, sizeof(bitmap.file_header), 1, bitmap_file);
     fread(&bitmap.info_header, sizeof(bitmap.info_header), 1, bitmap_file);
-    unsigned int row_size = ROW_SIZE(bitmap.info_header.bits_per_pixel, bitmap.info_header.bitmap_width);
-    unsigned int pixel_size = bitmap.info_header.bits_per_pixel / 8;
-    unsigned int padded_row_size = (bitmap.info_header.bitmap_width * pixel_size + 3) & ~3; // Adjusted for padding
+    uint32_t row_size = ROW_SIZE(bitmap.info_header.bits_per_pixel, bitmap.info_header.bitmap_width);
+    uint32_t pixel_size = bitmap.info_header.bits_per_pixel / 8;
+    uint32_t padded_row_size = (bitmap.info_header.bitmap_width * pixel_size + 3) & ~3; // Adjusted for padding
     fseek(bitmap_file, bitmap.file_header.offset, SEEK_SET);
     bitmap.pixels = malloc(bitmap.info_header.image_size);
-    unsigned char *ptr = bitmap.pixels;
+    uint8_t *ptr = bitmap.pixels;
     for (int y = 0; y < bitmap.info_header.bitmap_height; y++)
     {
         fread(ptr, 1, padded_row_size, bitmap_file); // Read the whole row including padding
@@ -227,11 +262,19 @@ BITMAP ReadBitMap(const char *file_name)
 * @return the inverted pixel values are returned via pixels argument. If you want to keep 
 * the original pixel data make sure to save it!
 */
-void invert_pixel(unsigned char *pixels, unsigned int image_size) {
+void invertPixel(uint8_t *pixels, uint32_t image_size) {
     for (int i = 0; i < image_size; i += 4) {
         pixels[i] = 255 - pixels[i];         // Blue component
         pixels[i + 1] = 255 - pixels[i + 1]; // Green component
         pixels[i + 2] = 255 - pixels[i + 2]; // Red component
     }
+}
+
+void setPixel(uint32_t x, uint32_t y, uint8_t red, uint8_t green, uint8_t blue, uint8_t alpha, PBITMAP file) {
+    uint32_t index = (y * file->info_header.bitmap_width + x) * 4;
+    file->pixels[index]     = blue;                     // Blue
+    file->pixels[index + 1] = green;                    // Green
+    file->pixels[index + 2] = red;                      // Red
+    file->pixels[index + 3] = alpha;                    // Alpha
 }
 #endif
