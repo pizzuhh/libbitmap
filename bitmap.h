@@ -31,6 +31,8 @@ All information is taken from: https://en.m.wikipedia.org/wiki/BMP_file_format
 #define S_RGB 0x42475273
 #define WIN 0x206E6957
 
+
+
 #pragma pack(push, 1)
 typedef struct
 {
@@ -84,6 +86,8 @@ typedef struct {
     uint8_t blue;
 } COLOR24BIT;
 #pragma pack(pop)
+
+#define GetImageSize(bitmap) (bitmap.info_header.image_size)
 
 /*
 * Write to bitmap_file the struct data bitmap_data
@@ -256,12 +260,27 @@ BITMAP ReadBitMap(const char *file_name)
 }
 
 void cleanup(PBITMAP bmp) {
-    free(bmp->pixels);
-    bmp->pixels = NULL;
-    fclose(bmp->file);
-    free(bmp);
+    if (bmp == NULL) {
+        fprintf(stderr, "bmp is NULL. Not freeing!\n");
+        return;
+    }
+
+    if (bmp->pixels) {
+        free(bmp->pixels);
+        bmp->pixels = NULL;
+    } else {
+        fprintf(stderr, "bmp->pixels is NULL. Not freeing!\n");
+    }
+    
+    if (bmp->file) {
+        fclose(bmp->file);
+        bmp->file = NULL;
+    } else {
+        fprintf(stderr, "bmp->file is NULL. Not closing!\n");
+    }
     bmp = NULL;
 }
+
 
 /*
 * A function that inverts the pixels
@@ -270,7 +289,7 @@ void cleanup(PBITMAP bmp) {
 * @return the inverted pixel values are returned via pixels argument. If you want to keep 
 * the original pixel data make sure to save it!
 */
-void invertPixel(uint8_t *pixels, uint32_t image_size) {
+void InvertPixel(uint8_t *pixels, uint32_t image_size) {
     for (int i = 0; i < image_size; i += 4) {
         pixels[i] = 255 - pixels[i];         // Blue component
         pixels[i + 1] = 255 - pixels[i + 1]; // Green component
@@ -278,11 +297,12 @@ void invertPixel(uint8_t *pixels, uint32_t image_size) {
     }
 }
 
-void setPixel(uint32_t x, uint32_t y, uint8_t red, uint8_t green, uint8_t blue, uint8_t alpha, PBITMAP file) {
+void SetPixel(uint32_t x, uint32_t y, uint8_t red, uint8_t green, uint8_t blue, uint8_t alpha, PBITMAP file) {
     uint32_t index = (y * file->info_header.bitmap_width + x) * 4;
     file->pixels[index]     = blue;                     // Blue
     file->pixels[index + 1] = green;                    // Green
     file->pixels[index + 2] = red;                      // Red
     file->pixels[index + 3] = alpha;                    // Alpha
 }
+
 #endif
