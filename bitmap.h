@@ -149,7 +149,7 @@ PBITMAP GenerateBitMapData(int32_t width, int32_t height, uint16_t bits_per_pixe
     uint32_t pixel_size = bits_per_pixel / 8;
 
     for (int y = 0; y < height; ++y) {
-        memcpy(pixel_ptr, &pixels[pixel_idx], width * pixel_size); // Segfault here?
+        memcpy(pixel_ptr, &pixels[pixel_idx], width * pixel_size);
         pixel_ptr += width * pixel_size;
         pixel_idx += width * pixel_size;
         uint32_t padding_size = row_size - width * pixel_size;
@@ -253,6 +253,14 @@ BITMAP ReadBitMap(const char *file_name)
     }
     fclose(bitmap_file);
     return bitmap;
+}
+
+void cleanup(PBITMAP bmp) {
+    free(bmp->pixels);
+    bmp->pixels = NULL;
+    fclose(bmp->file);
+    free(bmp);
+    bmp = NULL;
 }
 
 /*
